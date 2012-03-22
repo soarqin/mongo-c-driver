@@ -88,7 +88,7 @@ typedef struct {
     char *cur;
     int dataSize;
     bson_bool_t finished;
-    int stack[32];
+    int stack[8];
     int stackPos;
     int err; /**< Bitfield representing errors or warnings on this buffer */
     char *errstr; /**< A string representation of the most recent error or warning. */

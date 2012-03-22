@@ -26,13 +26,7 @@
     #define MONGO_EXPORT
 #else
     #define MONGO_INLINE static
-    #ifdef MONGO_STATIC_BUILD
-        #define MONGO_EXPORT
-    #elif defined(MONGO_DLL_BUILD)
-        #define MONGO_EXPORT __declspec(dllexport)
-    #else
-        #define MONGO_EXPORT __declspec(dllimport)
-    #endif
+    #define MONGO_EXPORT
 #endif
 
 
@@ -44,6 +38,9 @@
 #define MONGO_EXTERN_C_END
 #endif
 
+#ifdef _MSC_VER
+#define MONGO_USE__INT64
+#endif
 
 #if defined(MONGO_HAVE_STDINT) || __STDC_VERSION__ >= 199901L
 #include <stdint.h>
