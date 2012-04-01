@@ -1,4 +1,4 @@
-/* net.c */
+/* env_default.c */
 
 /*    Copyright 2009-2011 10gen Inc.
  *
@@ -15,7 +15,7 @@
  *    limitations under the License.
  */
 
-/* Implementation for generic version of net.h */
+/* Networking and other niceties for all systems. */
 #include "env.h"
 #include <errno.h>
 #include <string.h>
@@ -27,6 +27,9 @@
 int mongo_write_socket( mongo *conn, const void *buf, int len ) {
     const char *cbuf = buf;
 #ifdef _WIN32
+    int flags = 0;
+#endif
+#ifdef MONGO_OSX_
     int flags = 0;
 #else
     int flags = MSG_NOSIGNAL;
