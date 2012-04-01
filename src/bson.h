@@ -49,6 +49,16 @@
 #define MONGO_EXTERN_C_END
 #endif
 
+#ifdef _MSC_VER
+#ifndef MONGO_USE__INT64
+#define MONGO_USE__INT64
+#endif
+#else
+#ifndef MONGO_HAVE_STDINT
+#define MONGO_HAVE_STDINT
+#endif
+#endif
+
 #if defined(MONGO_HAVE_STDINT) || __STDC_VERSION__ >= 199901L
 #include <stdint.h>
 #elif defined(MONGO_HAVE_UNISTD)
