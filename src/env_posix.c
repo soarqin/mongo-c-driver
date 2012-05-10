@@ -1,6 +1,6 @@
 /* env_posix.c */
 
-/*    Copyright 2009-2011 10gen Inc.
+/*    Copyright 2009-2012 10gen Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -21,29 +21,30 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/time.h>
+#include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #ifndef NI_MAXSERV
 # define NI_MAXSERV 32
 #endif
 
-static void mongo_set_error( mongo *conn, int err, const char *str ) {
-    int errstr_size, str_size;
-
-    errstr_size = sizeof( conn->errstr ) - 1;
-    conn->err = err;
-
-    if( !str ) {
-        str = strerror( errno );
-    }
-    str_size = strlen( str );
-    errstr_size = str_size > errstr_size ? errstr_size : str_size;
-    memcpy( conn->errstr, str, errstr_size );
-    conn->errstr[errstr_size] = '\0';
+int mongo_env_close_socket( int socket ) {
+    return close( socket );
 }
 
-int mongo_write_socket( mongo *conn, const void *buf, int len ) {
+int mongo_env_sock_init( void ) {
+    return 0;
+}
+
+int mongo_env_write_socket( mongo *conn, const void *buf, int len ) {
     const char *cbuf = buf;
-#ifdef MONGO_OSX_
+#ifdef __APPLE__
     int flags = 0;
 #else
     int flags = MSG_NOSIGNAL;
@@ -54,7 +55,7 @@ int mongo_write_socket( mongo *conn, const void *buf, int len ) {
         if ( sent == -1 ) {
             if (errno == EPIPE)
                 conn->connected = 0;
-            mongo_set_error( conn, MONGO_IO_ERROR, NULL );
+            __mongo_set_error( conn, MONGO_IO_ERROR, strerror( errno ), errno );
             return MONGO_ERROR;
         }
         cbuf += sent;
@@ -64,13 +65,12 @@ int mongo_write_socket( mongo *conn, const void *buf, int len ) {
     return MONGO_OK;
 }
 
-int mongo_read_socket( mongo *conn, void *buf, int len ) {
+int mongo_env_read_socket( mongo *conn, void *buf, int len ) {
     char *cbuf = buf;
     while ( len ) {
         int sent = recv( conn->sock, cbuf, len, 0 );
         if ( sent == 0 || sent == -1 ) {
-            conn->err = MONGO_IO_ERROR;
-            mongo_set_error( conn, MONGO_IO_ERROR, NULL );
+            __mongo_set_error( conn, MONGO_IO_ERROR, strerror( errno ), errno );
             return MONGO_ERROR;
         }
         cbuf += sent;
@@ -80,25 +80,26 @@ int mongo_read_socket( mongo *conn, void *buf, int len ) {
     return MONGO_OK;
 }
 
-int mongo_set_socket_op_timeout( mongo *conn, int millis ) {
+int mongo_env_set_socket_op_timeout( mongo *conn, int millis ) {
     struct timeval tv;
     tv.tv_sec = millis / 1000;
     tv.tv_usec = ( millis % 1000 ) * 1000;
 
     if ( setsockopt( conn->sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof( tv ) ) == -1 ) {
         conn->err = MONGO_IO_ERROR;
+        __mongo_set_error( conn, MONGO_IO_ERROR, "setsockopt SO_RCVTIMEO failed.", errno );
         return MONGO_ERROR;
     }
 
     if ( setsockopt( conn->sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof( tv ) ) == -1 ) {
-        conn->err = MONGO_IO_ERROR;
+        __mongo_set_error( conn, MONGO_IO_ERROR, "setsockopt SO_SNDTIMEO failed.", errno );
         return MONGO_ERROR;
     }
 
     return MONGO_OK;
 }
 
-int mongo_socket_connect( mongo *conn, const char *host, int port ) {
+int mongo_env_socket_connect( mongo *conn, const char *host, int port ) {
     char port_str[NI_MAXSERV];
     int status;
 
@@ -135,7 +136,7 @@ int mongo_socket_connect( mongo *conn, const char *host, int port ) {
 
         status = connect( conn->sock, ai_ptr->ai_addr, ai_ptr->ai_addrlen );
         if ( status != 0 ) {
-            mongo_close_socket( conn->sock );
+            mongo_env_close_socket( conn->sock );
             conn->sock = 0;
             continue;
         }
@@ -146,7 +147,7 @@ int mongo_socket_connect( mongo *conn, const char *host, int port ) {
             setsockopt( conn->sock, IPPROTO_TCP, TCP_NODELAY,
                         ( void * ) &flag, sizeof( flag ) );
             if ( conn->op_timeout_ms > 0 )
-                mongo_set_socket_op_timeout( conn, conn->op_timeout_ms );
+                mongo_env_set_socket_op_timeout( conn, conn->op_timeout_ms );
         }
 
         conn->connected = 1;
