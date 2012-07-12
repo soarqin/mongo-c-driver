@@ -116,48 +116,14 @@ MONGO_EXPORT const char *bson_data( const bson *b ) {
 }
 
 static char hexbyte( char hex ) {
-    switch ( hex ) {
-    case '0':
+    if (hex >= '0' && hex <= '9')
+        return (hex - '0');
+    else if (hex >= 'A' && hex <= 'F')
+        return (hex - 'A' + 10);
+    else if (hex >= 'a' && hex <= 'f')
+        return (hex - 'a' + 10);
+    else
         return 0x0;
-    case '1':
-        return 0x1;
-    case '2':
-        return 0x2;
-    case '3':
-        return 0x3;
-    case '4':
-        return 0x4;
-    case '5':
-        return 0x5;
-    case '6':
-        return 0x6;
-    case '7':
-        return 0x7;
-    case '8':
-        return 0x8;
-    case '9':
-        return 0x9;
-    case 'a':
-    case 'A':
-        return 0xa;
-    case 'b':
-    case 'B':
-        return 0xb;
-    case 'c':
-    case 'C':
-        return 0xc;
-    case 'd':
-    case 'D':
-        return 0xd;
-    case 'e':
-    case 'E':
-        return 0xe;
-    case 'f':
-    case 'F':
-        return 0xf;
-    default:
-        return 0x0; /* something smarter? */
-    }
 }
 
 MONGO_EXPORT void bson_oid_from_string( bson_oid_t *oid, const char *str ) {
@@ -276,10 +242,11 @@ MONGO_EXPORT void bson_print_raw( const char *data , int depth ) {
             break;
         case BSON_CODEWSCOPE:
             bson_printf( "BSON_CODE_W_SCOPE: %s", bson_iterator_code( &i ) );
-            bson_init( &scope );
+            /* bson_init( &scope ); // review - stepped on by bson_iterator_code_scope? */
             bson_iterator_code_scope( &i, &scope );
             bson_printf( "\n\t SCOPE: " );
             bson_print( &scope );
+            /* bson_destroy( &scope ); // review - causes free error */
             break;
         case BSON_INT:
             bson_printf( "%d" , bson_iterator_int( &i ) );
