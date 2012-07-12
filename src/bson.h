@@ -32,7 +32,7 @@
     #define MONGO_EXPORT
 #else
     #define MONGO_INLINE static
-    #ifdef MONGO_STATIC_BUILD
+    #ifndef MONGO_SHARED
         #define MONGO_EXPORT
     #elif defined(MONGO_DLL_BUILD)
         #define MONGO_EXPORT __declspec(dllexport)
