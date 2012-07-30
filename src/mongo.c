@@ -24,7 +24,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-MONGO_EXPORT mongo* mongo_create() {
+MONGO_EXPORT mongo* mongo_create( void ) {
     return (mongo*)bson_malloc(sizeof(mongo));
 }
 
@@ -57,7 +57,7 @@ const char* _get_host_port(mongo_host_port* hp) {
 
 MONGO_EXPORT const char* mongo_get_primary(mongo* conn) {
     mongo* conn_ = (mongo*)conn;
-    if( !(conn_->connected) || (conn_->primary->host == '\0') )
+    if( !(conn_->connected) || (conn_->primary->host[0] == '\0') )
         return NULL;
     return _get_host_port(conn_->primary);
 }
@@ -94,7 +94,7 @@ MONGO_EXPORT const char* mongo_get_host(mongo* conn, int i) {
 }
 
 
-MONGO_EXPORT mongo_cursor* mongo_cursor_create() {
+MONGO_EXPORT mongo_cursor* mongo_cursor_create( void ) {
     return (mongo_cursor*)bson_malloc(sizeof(mongo_cursor));
 }
 
@@ -517,9 +517,9 @@ static void mongo_replset_check_seed( mongo *conn ) {
                 host_string = bson_iterator_string( &it_sub );
 
                 host_port = bson_malloc( sizeof( mongo_host_port ) );
-                mongo_parse_host( host_string, host_port );
 
                 if( host_port ) {
+                    mongo_parse_host( host_string, host_port );
                     mongo_replset_add_node( &conn->replset->hosts,
                                             host_port->host, host_port->port );
 
@@ -708,14 +708,14 @@ MONGO_EXPORT void mongo_destroy( mongo *conn ) {
 static int mongo_bson_valid( mongo *conn, const bson *bson, int write ) {
     int size;
 
-    size = bson_size( bson );
-    if( size > conn->max_bson_size ) {
-        conn->err = MONGO_BSON_TOO_LARGE;
+    if( ! bson->finished ) {
+        conn->err = MONGO_BSON_NOT_FINISHED;
         return MONGO_ERROR;
     }
 
-    if( ! bson->finished ) {
-        conn->err = MONGO_BSON_NOT_FINISHED;
+    size = bson_size( bson );
+    if( size > conn->max_bson_size ) {
+        conn->err = MONGO_BSON_TOO_LARGE;
         return MONGO_ERROR;
     }
 
@@ -837,7 +837,7 @@ MONGO_EXPORT int mongo_insert( mongo *conn, const char *ns,
     data = &mm->data;
     data = mongo_data_append32( data, &ZERO );
     data = mongo_data_append( data, ns, strlen( ns ) + 1 );
-    data = mongo_data_append( data, bson->data, bson_size( bson ) );
+    mongo_data_append( data, bson->data, bson_size( bson ) );
 
 
     /* TODO: refactor so that we can send the insert message
@@ -943,7 +943,7 @@ MONGO_EXPORT int mongo_update( mongo *conn, const char *ns, const bson *cond,
     data = mongo_data_append( data, ns, strlen( ns ) + 1 );
     data = mongo_data_append32( data, &flags );
     data = mongo_data_append( data, cond->data, bson_size( cond ) );
-    data = mongo_data_append( data, op->data, bson_size( op ) );
+    mongo_data_append( data, op->data, bson_size( op ) );
 
     /* TODO: refactor so that we can send the insert message
      * and the getlasterror messages together. */
@@ -989,7 +989,7 @@ MONGO_EXPORT int mongo_remove( mongo *conn, const char *ns, const bson *cond,
     data = mongo_data_append32( data, &ZERO );
     data = mongo_data_append( data, ns, strlen( ns ) + 1 );
     data = mongo_data_append32( data, &ZERO );
-    data = mongo_data_append( data, cond->data, bson_size( cond ) );
+    mongo_data_append( data, cond->data, bson_size( cond ) );
 
     /* TODO: refactor so that we can send the insert message
      * and the getlasterror messages together. */
@@ -1180,7 +1180,7 @@ static int mongo_cursor_get_more( mongo_cursor *cursor ) {
         data = mongo_data_append32( data, &ZERO );
         data = mongo_data_append( data, cursor->ns, sl );
         data = mongo_data_append32( data, &limit );
-        data = mongo_data_append64( data, &cursor->reply->fields.cursorID );
+        mongo_data_append64( data, &cursor->reply->fields.cursorID );
 
         bson_free( cursor->reply );
         res = mongo_message_send( cursor->conn, mm );
@@ -1355,7 +1355,7 @@ MONGO_EXPORT int mongo_cursor_destroy( mongo_cursor *cursor ) {
         char *data = &mm->data;
         data = mongo_data_append32( data, &ZERO );
         data = mongo_data_append32( data, &ONE );
-        data = mongo_data_append64( data, &cursor->reply->fields.cursorID );
+        mongo_data_append64( data, &cursor->reply->fields.cursorID );
 
         result = mongo_message_send( conn, mm );
     }

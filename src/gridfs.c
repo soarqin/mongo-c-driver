@@ -21,7 +21,7 @@
 #include <string.h>
 #include <assert.h>
 
-MONGO_EXPORT gridfs* gridfs_create() {
+MONGO_EXPORT gridfs* gridfs_create( void ) {
     return (gridfs*)bson_malloc(sizeof(gridfs));
 }
 
@@ -29,7 +29,7 @@ MONGO_EXPORT void gridfs_dispose(gridfs* gfs) {
     free(gfs);
 }
 
-MONGO_EXPORT gridfile* gridfile_create() {
+MONGO_EXPORT gridfile* gridfile_create( void ) {
     return (gridfile*)bson_malloc(sizeof(gridfile));
 }
 
@@ -468,7 +468,7 @@ MONGO_EXPORT void gridfile_destroy( gridfile *gfile )
 }
 
 bson_bool_t gridfile_exists( gridfile *gfile ) {
-    return ( bson_bool_t )( gfile != NULL || gfile->meta == NULL );
+    return ( bson_bool_t )( gfile != NULL && gfile->meta != NULL );
 }
 
 MONGO_EXPORT const char *gridfile_get_filename( gridfile *gfile ) {
