@@ -26,7 +26,7 @@
 MONGO_EXTERN_C_START
 
 #define MONGO_MAJOR 0
-#define MONGO_MINOR 6
+#define MONGO_MINOR 7
 #define MONGO_PATCH 0
 
 #define MONGO_OK 0
@@ -158,11 +158,11 @@ typedef struct {
     mongo_host_port *hosts;        /**< List of host/ports given by the replica set */
     char *name;                    /**< Name of the replica set. */
     bson_bool_t primary_connected; /**< Primary node connection status. */
-} mongo_replset;
+} mongo_replica_set;
 
 typedef struct mongo {
     mongo_host_port *primary;  /**< Primary connection info. */
-    mongo_replset *replset;    /**< replset object if connected to a replica set. */
+    mongo_replica_set *replica_set;    /**< replica_set object if connected to a replica set. */
     int sock;                  /**< Socket file descriptor. */
     int flags;                 /**< Flags on this connection object. */
     int conn_timeout_ms;       /**< Connection timeout in milliseconds. */
@@ -223,9 +223,32 @@ MONGO_EXPORT void mongo_init( mongo *conn );
  * @return MONGO_OK or MONGO_ERROR on failure. On failure, a constant of type
  *   mongo_error_t will be set on the conn->err field.
  */
+MONGO_EXPORT int mongo_client( mongo *conn , const char *host, int port );
+
+/**
+ * DEPRECATED - use mongo_client.
+ * Connect to a single MongoDB server.
+ *
+ * @param conn a mongo object.
+ * @param host a numerical network address or a network hostname.
+ * @param port the port to connect to.
+ *
+ * @return MONGO_OK or MONGO_ERROR on failure. On failure, a constant of type
+ *   mongo_error_t will be set on the conn->err field.
+ */
 MONGO_EXPORT int mongo_connect( mongo *conn , const char *host, int port );
 
 /**
+ * Set up this connection object for connecting to a replica set.
+ * To connect, pass the object to mongo_replica_set_connect().
+ *
+ * @param conn a mongo object.
+ * @param name the name of the replica set to connect to.
+ * */
+MONGO_EXPORT void mongo_replica_set_init( mongo *conn, const char *name );
+
+/**
+ * DEPRECATED - use mongo_replica_set_init.
  * Set up this connection object for connecting to a replica set.
  * To connect, pass the object to mongo_replset_connect().
  *
@@ -235,6 +258,18 @@ MONGO_EXPORT int mongo_connect( mongo *conn , const char *host, int port );
 MONGO_EXPORT void mongo_replset_init( mongo *conn, const char *name );
 
 /**
+ * Add a seed node to the replica set connection object.
+ *
+ * You must specify at least one seed node before connecting to a replica set.
+ *
+ * @param conn a mongo object.
+ * @param host a numerical network address or a network hostname.
+ * @param port the port to connect to.
+ */
+MONGO_EXPORT void mongo_replica_set_add_seed( mongo *conn, const char *host, int port );
+
+/**
+ * DEPRECATED - use mongo_replica_set_add_seed.
  * Add a seed node to the replica set connection object.
  *
  * You must specify at least one seed node before connecting to a replica set.
@@ -266,6 +301,20 @@ void mongo_parse_host( const char *host_string, mongo_host_port *host_port );
 MONGO_EXPORT int mongo_validate_ns( mongo *conn, const char *ns );
 
 /**
+ * Connect to a replica set.
+ *
+ * Before passing a connection object to this function, you must already have called
+ * mongo_set_replica_set and mongo_replica_set_add_seed.
+ *
+ * @param conn a mongo object.
+ *
+ * @return MONGO_OK or MONGO_ERROR on failure. On failure, a constant of type
+ *   mongo_conn_return_t will be set on the conn->err field.
+ */
+MONGO_EXPORT int mongo_replica_set_client( mongo *conn );
+
+/**
+ * DEPRECATED - use mongo_replica_set_client.
  * Connect to a replica set.
  *
  * Before passing a connection object to this function, you must already have called
@@ -342,7 +391,7 @@ MONGO_EXPORT void mongo_destroy( mongo *conn );
  *
  */
 MONGO_EXPORT void mongo_set_write_concern( mongo *conn,
-    mongo_write_concern *write_concern );
+        mongo_write_concern *write_concern );
 
 
 /*********************************************************************
@@ -367,7 +416,7 @@ CRUD API
  *     on the bson struct for the reason.
  */
 MONGO_EXPORT int mongo_insert( mongo *conn, const char *ns, const bson *data,
-    mongo_write_concern *custom_write_concern );
+                               mongo_write_concern *custom_write_concern );
 
 /**
  * Insert a batch of BSON documents into a MongoDB server. This function
@@ -389,8 +438,8 @@ MONGO_EXPORT int mongo_insert( mongo *conn, const char *ns, const bson *data,
  *
  */
 MONGO_EXPORT int mongo_insert_batch( mongo *conn, const char *ns,
-    const bson **data, int num, mongo_write_concern *custom_write_concern,
-    int flags );
+                                     const bson **data, int num, mongo_write_concern *custom_write_concern,
+                                     int flags );
 
 /**
  * Update a document in a MongoDB server.
@@ -409,7 +458,7 @@ MONGO_EXPORT int mongo_insert_batch( mongo *conn, const char *ns,
  *
  */
 MONGO_EXPORT int mongo_update( mongo *conn, const char *ns, const bson *cond,
-    const bson *op, int flags, mongo_write_concern *custom_write_concern );
+                               const bson *op, int flags, mongo_write_concern *custom_write_concern );
 
 /**
  * Remove a document from a MongoDB server.
@@ -425,7 +474,7 @@ MONGO_EXPORT int mongo_update( mongo *conn, const char *ns, const bson *cond,
  * @return MONGO_OK or MONGO_ERROR with error stored in conn object.
  */
 MONGO_EXPORT int mongo_remove( mongo *conn, const char *ns, const bson *cond,
-    mongo_write_concern *custom_write_concern );
+                               mongo_write_concern *custom_write_concern );
 
 
 /*********************************************************************
@@ -473,7 +522,7 @@ Cursor API
  *     use the cursor builder API instead.
  */
 MONGO_EXPORT mongo_cursor *mongo_find( mongo *conn, const char *ns, const bson *query,
-                          const bson *fields, int limit, int skip, int options );
+                                       const bson *fields, int limit, int skip, int options );
 
 /**
  * Initalize a new cursor object.
@@ -582,7 +631,7 @@ MONGO_EXPORT int mongo_cursor_destroy( mongo_cursor *cursor );
  */
 /* out can be NULL if you don't care about results. useful for commands */
 MONGO_EXPORT int mongo_find_one( mongo *conn, const char *ns, const bson *query,
-                            const bson *fields, bson *out );
+                                 const bson *fields, bson *out );
 
 
 /*********************************************************************
@@ -601,7 +650,7 @@ Command API and Helpers
  *     MONGO_ERROR is returned.
  */
 MONGO_EXPORT double mongo_count( mongo *conn, const char *db, const char *coll,
-                     const bson *query );
+                                 const bson *query );
 
 /**
  * Create a compound index.
@@ -617,7 +666,7 @@ MONGO_EXPORT double mongo_count( mongo *conn, const char *db, const char *coll,
  * @return MONGO_OK if index is created successfully; otherwise, MONGO_ERROR.
  */
 MONGO_EXPORT int mongo_create_index( mongo *conn, const char *ns,
-    const bson *key, int options, bson *out );
+                                     const bson *key, int options, bson *out );
 
 /**
  * Create a capped collection.
@@ -632,7 +681,7 @@ MONGO_EXPORT int mongo_create_index( mongo *conn, const char *ns,
  *   number of documents.
  */
 MONGO_EXPORT int mongo_create_capped_collection( mongo *conn, const char *db,
-    const char *collection, int size, int max, bson *out );
+        const char *collection, int size, int max, bson *out );
 
 /**
  * Create an index with a single key.
@@ -646,7 +695,7 @@ MONGO_EXPORT int mongo_create_capped_collection( mongo *conn, const char *db,
  * @return true if the index was created.
  */
 MONGO_EXPORT bson_bool_t mongo_create_simple_index( mongo *conn, const char *ns,
-    const char *field, int options, bson *out );
+        const char *field, int options, bson *out );
 
 /**
  * Run a command on a MongoDB server.
@@ -659,7 +708,7 @@ MONGO_EXPORT bson_bool_t mongo_create_simple_index( mongo *conn, const char *ns,
  * @return MONGO_OK if the command ran without error.
  */
 MONGO_EXPORT int mongo_run_command( mongo *conn, const char *db,
-    const bson *command, bson *out );
+                                    const bson *command, bson *out );
 
 /**
  * Run a command that accepts a simple string key and integer value.
@@ -674,7 +723,7 @@ MONGO_EXPORT int mongo_run_command( mongo *conn, const char *db,
  *
  */
 MONGO_EXPORT int mongo_simple_int_command( mongo *conn, const char *db,
-                              const char *cmd, int arg, bson *out );
+        const char *cmd, int arg, bson *out );
 
 /**
  * Run a command that accepts a simple string key and value.
@@ -689,7 +738,7 @@ MONGO_EXPORT int mongo_simple_int_command( mongo *conn, const char *db,
  *
  */
 MONGO_EXPORT int mongo_simple_str_command( mongo *conn, const char *db,
-    const char *cmd, const char *arg, bson *out );
+        const char *cmd, const char *arg, bson *out );
 
 /**
  * Drop a database.
@@ -712,7 +761,7 @@ MONGO_EXPORT int mongo_cmd_drop_db( mongo *conn, const char *db );
  * @return true if the collection drop was successful.
  */
 MONGO_EXPORT int mongo_cmd_drop_collection( mongo *conn, const char *db,
-    const char *collection, bson *out );
+        const char *collection, bson *out );
 
 /**
  * Add a database user.
@@ -725,7 +774,7 @@ MONGO_EXPORT int mongo_cmd_drop_collection( mongo *conn, const char *db,
  * @return MONGO_OK or MONGO_ERROR.
   */
 MONGO_EXPORT int mongo_cmd_add_user( mongo *conn, const char *db,
-    const char *user, const char *pass );
+                                     const char *user, const char *pass );
 
 /**
  * Authenticate a user.
@@ -738,7 +787,7 @@ MONGO_EXPORT int mongo_cmd_add_user( mongo *conn, const char *db,
  * @return MONGO_OK on sucess and MONGO_ERROR on failure.
  */
 MONGO_EXPORT int mongo_cmd_authenticate( mongo *conn, const char *db,
-    const char *user, const char *pass );
+        const char *user, const char *pass );
 
 /**
  * Check if the current server is a master.

@@ -53,11 +53,11 @@ static int ( *oid_inc_func )( void )  = NULL;
    ------------------------------ */
 
 MONGO_EXPORT bson* bson_create( void ) {
-	return (bson*)bson_malloc(sizeof(bson));
+    return (bson*)bson_malloc(sizeof(bson));
 }
 
 MONGO_EXPORT void bson_dispose(bson* b) {
-	bson_free(b);
+    bson_free(b);
 }
 
 MONGO_EXPORT bson *bson_empty( bson *obj ) {
@@ -155,7 +155,7 @@ MONGO_EXPORT void bson_oid_gen( bson_oid_t *oid ) {
     static int incr = 0;
     static int fuzz = 0;
     int i;
-    int t = time( NULL );
+    time_t t = time( NULL );
 
     if( oid_inc_func )
         i = oid_inc_func();
@@ -166,7 +166,7 @@ MONGO_EXPORT void bson_oid_gen( bson_oid_t *oid ) {
         if ( oid_fuzz_func )
             fuzz = oid_fuzz_func();
         else {
-            srand( t );
+            srand( ( int )t );
             fuzz = rand();
         }
     }
@@ -527,7 +527,8 @@ MONGO_EXPORT void bson_iterator_code_scope( const bson_iterator *i, bson *scope 
         bson_init_data( scope, ( void * )( bson_iterator_value( i )+8+code_len ) );
         _bson_reset( scope );
         scope->finished = 1;
-    } else {
+    }
+    else {
         bson_empty( scope );
     }
 }
@@ -598,22 +599,22 @@ void bson_init_size( bson *b, int size ) {
     _bson_init_size( b, size );
 }
 
-void bson_append_byte( bson *b, char c ) {
+static void bson_append_byte( bson *b, char c ) {
     b->cur[0] = c;
     b->cur++;
 }
 
-void bson_append( bson *b, const void *data, int len ) {
+static void bson_append( bson *b, const void *data, int len ) {
     memcpy( b->cur , data , len );
     b->cur += len;
 }
 
-void bson_append32( bson *b, const void *data ) {
+static void bson_append32( bson *b, const void *data ) {
     bson_little_endian32( b->cur, data );
     b->cur += 4;
 }
 
-void bson_append64( bson *b, const void *data ) {
+static void bson_append64( bson *b, const void *data ) {
     bson_little_endian64( b->cur, data );
     b->cur += 8;
 }
@@ -740,8 +741,8 @@ MONGO_EXPORT int bson_append_undefined( bson *b, const char *name ) {
     return BSON_OK;
 }
 
-int bson_append_string_base( bson *b, const char *name,
-                             const char *value, int len, bson_type type ) {
+static int bson_append_string_base( bson *b, const char *name,
+                                    const char *value, int len, bson_type type ) {
 
     int sl = len + 1;
     if ( bson_check_string( b, ( const char * )value, sl - 1 ) == BSON_ERROR )
@@ -780,7 +781,7 @@ MONGO_EXPORT int bson_append_code_n( bson *b, const char *name, const char *valu
 }
 
 MONGO_EXPORT int bson_append_code_w_scope_n( bson *b, const char *name,
-                                const char *code, int len, const bson *scope ) {
+        const char *code, int len, const bson *scope ) {
 
     int sl, size;
     if ( !scope ) return BSON_ERROR;
@@ -808,7 +809,8 @@ MONGO_EXPORT int bson_append_binary( bson *b, const char *name, char type, const
         bson_append_byte( b, type );
         bson_append32( b, &len );
         bson_append( b, str, len );
-    } else {
+    }
+    else {
         if ( bson_append_estart( b, BSON_BINDATA, name, 4+1+len ) == BSON_ERROR )
             return BSON_ERROR;
         bson_append32( b, &len );
@@ -862,7 +864,8 @@ MONGO_EXPORT int bson_append_element( bson *b, const char *name_or_null, const b
         if( bson_ensure_space( b, size ) == BSON_ERROR )
             return BSON_ERROR;
         bson_append( b, elem->cur, size );
-    } else {
+    }
+    else {
         int data_size = size - 2 - strlen( bson_iterator_key( elem ) );
         bson_append_estart( b, elem->cur[0], name_or_null, data_size );
         bson_append( b, bson_iterator_value( elem ), data_size );
@@ -926,7 +929,7 @@ MONGO_EXPORT int bson_append_finish_object( bson *b ) {
 }
 
 MONGO_EXPORT double bson_int64_to_double( int64_t i64 ) {
-  return (double)i64;
+    return (double)i64;
 }
 
 MONGO_EXPORT int bson_append_finish_array( bson *b ) {
@@ -963,7 +966,7 @@ void *bson_realloc( void *ptr, int size ) {
 
 int _bson_errprintf( const char *format, ... ) {
     va_list ap;
-    int ret;
+    int ret = 0;
     va_start( ap, format );
 #ifndef R_SAFETY_NET
     ret = vfprintf( stderr, format, ap );
