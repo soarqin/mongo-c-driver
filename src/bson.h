@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <stdint.h>
 
 #ifdef __GNUC__
 #define MONGO_INLINE static __inline__
