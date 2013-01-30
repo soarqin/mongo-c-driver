@@ -34,13 +34,10 @@ char *bcon_errstr[] = {
     "bson finish error"
 };
 
-int bcon_error(bson *b, const bcon *bc, size_t i, bcon_error_t err) {
-    b->err = err;
-    b->errstr = bcon_errstr[err];
-    return BCON_ERROR;
-}
-
 bcon_error_t bson_append_bcon_array(bson *b, const bcon *bc);
+
+/* should be static, but it used by test files */
+bcon_token_t bcon_token(char *s);
 
 bcon_token_t bcon_token(char *s) {
     if (s == 0) return Token_EOD;
@@ -57,7 +54,7 @@ bcon_token_t bcon_token(char *s) {
     return Token_Default;
 }
 
-bcon_error_t bson_bcon_key_value(bson *b, const char *key, const char *typespec, const bcon bci) {
+static bcon_error_t bson_bcon_key_value(bson *b, const char *key, const char *typespec, const bcon bci) {
     bcon_error_t ret = BCON_OK;
     bson_oid_t oid;
     char ptype = typespec ? typespec[1] : '_';
@@ -164,7 +161,7 @@ typedef enum bcon_state_t {
 /*
  * simplified FSM to parse BCON structure, uses stacks for sub-documents and sub-arrays
  */
-bcon_error_t bson_append_bcon_with_state(bson *b, const bcon *bc, bcon_state_t start_state) {
+static bcon_error_t bson_append_bcon_with_state(bson *b, const bcon *bc, bcon_state_t start_state) {
     bcon_error_t ret = BCON_OK;
     bcon_state_t state = start_state;
     char *key = 0;
@@ -172,7 +169,7 @@ bcon_error_t bson_append_bcon_with_state(bson *b, const bcon *bc, bcon_state_t s
     unsigned char doc_stack[DOC_STACK_SIZE];
     size_t doc_stack_pointer = 0;
     size_t array_index = 0;
-    unsigned int array_index_stack[ARRAY_INDEX_STACK_SIZE];
+    size_t array_index_stack[ARRAY_INDEX_STACK_SIZE];
     size_t array_index_stack_pointer = 0;
     char array_index_buffer[ARRAY_INDEX_BUFFER_SIZE]; /* max BSON size */
     int end_of_data;
@@ -370,54 +367,6 @@ void bcon_print(const bcon *bc) { /* prints internal representation, not JSON */
         }
         typespec = typespec_next;
         delim = ",";
-    }
-    putchar('}');
-}
-
-/* TODO - incomplete */
-void bcon_json_print(bcon *bc, int n) {
-    int t = 0;
-    int key_value_count = 0;
-    char *s;
-    int end_of_data;
-    bcon *bcp;
-    putchar('{');
-    for (end_of_data = 0, bcp = bc; !end_of_data; bcp++) {
-        bcon bci = *bcp;
-        switch (t) {
-        case 'l':
-            if (key_value_count & 0x1) putchar(':');
-            printf("%ld", bci.l);
-            t = 0;
-            key_value_count++;
-            break;
-        case 's': /* fall through */
-        default:
-            s = bci.s;
-            switch (*s) {
-            case ':':
-                ++s;
-                t = *++s;
-                break;
-            case '{':
-                if (key_value_count & 0x1) putchar(':');
-                putchar(*s);
-                key_value_count = 0;
-                break;
-            case '}':
-                putchar(*s);
-                key_value_count = 2;
-                break;
-            default:
-                if (key_value_count & 0x1) putchar(':');
-                else if (key_value_count > 1) putchar(',');
-                printf("\"%s\"", s);
-                t = 0;
-                key_value_count++;
-                break;
-            }
-            break;
-        }
     }
     putchar('}');
 }
