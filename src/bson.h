@@ -26,7 +26,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <stdint.h>
 
 #ifdef __GNUC__
 #define MONGO_INLINE static __inline__
@@ -67,7 +66,9 @@
 #elif defined(MONGO_USE__INT64)
 typedef __int64 int64_t;
 typedef unsigned __int64 uint64_t;
+#ifndef INT32_MAX
 #define INT32_MAX 0x7fffffffL
+#endif
 #elif defined(MONGO_USE_LONG_LONG_INT)
 typedef long long int int64_t;
 typedef unsigned long long int uint64_t;
