@@ -42,14 +42,13 @@ void bson_dump( bson * b ) {
     printf("},\n");
     printf("\tstackPos: %d,\n", b->stackPos);
     printf("\terr: %d,\n", b->err);
-    printf("\terrstr: \"%s\"\n", b->errstr);
     printf("}\n");
 }
 
 /* WC1 is completely static */
 static char WC1_data[] = {23,0,0,0,16,103,101,116,108,97,115,116,101,114,114,111,114,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0};
 static bson WC1_cmd = {
-    WC1_data, WC1_data, 128, 1, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, 0, 0, ""
+    WC1_data, WC1_data, 128, 1, 0, {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, 0, 0, 0, 0
 };
 static mongo_write_concern DWC1 = { 1, 0, 0, 0, 0, 0 }; /* w = 1 */ /* do not reference &WC1_cmd for this test */
 
@@ -68,14 +67,13 @@ void test_write_concern_finish( void ) {
 void test_batch_insert_with_continue( mongo *conn ) {
     bson *objs[5];
     bson *objs2[5];
-    bson empty;
     int i;
 
     mongo_cmd_drop_collection( conn, TEST_DB, TEST_COL, NULL );
     mongo_create_simple_index( conn, TEST_NS, "n", MONGO_INDEX_UNIQUE, NULL );
 
     for( i=0; i<5; i++ ) {
-        objs[i] = bson_malloc( sizeof( bson ) );
+        objs[i] = bson_alloc();
         bson_init( objs[i] );
         bson_append_int( objs[i], "n", i );
         bson_finish( objs[i] );
@@ -85,17 +83,17 @@ void test_batch_insert_with_continue( mongo *conn ) {
         NULL, 0 ) == MONGO_OK );
 
     ASSERT( mongo_count( conn, TEST_DB, TEST_COL,
-          bson_empty( &empty ) ) == 5 );
+          bson_shared_empty( ) ) == 5 );
 
     /* Add one duplicate value for n. */
-    objs2[0] = bson_malloc( sizeof( bson ) );
+    objs2[0] = bson_alloc();
     bson_init( objs2[0] );
     bson_append_int( objs2[0], "n", 1 );
     bson_finish( objs2[0] );
 
     /* Add n for 6 - 9. */
     for( i = 1; i < 5; i++ ) {
-        objs2[i] = bson_malloc( sizeof( bson ) );
+        objs2[i] = bson_alloc();
         bson_init( objs2[i] );
         bson_append_int( objs2[i], "n", i + 5 );
         bson_finish( objs2[i] );
@@ -105,20 +103,20 @@ void test_batch_insert_with_continue( mongo *conn ) {
     ASSERT( mongo_insert_batch( conn, TEST_NS, (const bson **)objs2, 5,
         NULL, 0 ) == MONGO_OK );
     ASSERT( mongo_count( conn, TEST_DB, TEST_COL,
-          bson_empty( &empty ) ) == 5 );
+          bson_shared_empty( ) ) == 5 );
 
     /* With continue on error, will insert four documents. */
     ASSERT( mongo_insert_batch( conn, TEST_NS, (const bson **)objs2, 5,
         NULL, MONGO_CONTINUE_ON_ERROR ) == MONGO_OK );
     ASSERT( mongo_count( conn, TEST_DB, TEST_COL,
-          bson_empty( &empty ) ) == 9 );
+          bson_shared_empty( ) ) == 9 );
 
     for( i=0; i<5; i++ ) {
         bson_destroy( objs2[i] );
-        bson_free( objs2[i] );
+        bson_dealloc( objs2[i] );
 
         bson_destroy( objs[i] );
-        bson_free( objs[i] );
+        bson_dealloc( objs[i] );
     }
 }
 
@@ -128,13 +126,12 @@ void test_update_and_remove( mongo *conn ) {
     mongo_write_concern wc[1];
     bson *objs[5];
     bson query[1], update[1];
-    bson empty;
     int i;
 
     create_capped_collection( conn );
 
     for( i=0; i<5; i++ ) {
-        objs[i] = bson_malloc( sizeof( bson ) );
+        objs[i] = bson_alloc();
         bson_init( objs[i] );
         bson_append_int( objs[i], "n", i );
         bson_finish( objs[i] );
@@ -143,13 +140,13 @@ void test_update_and_remove( mongo *conn ) {
     ASSERT( mongo_insert_batch( conn, "test.wc", (const bson **)objs, 5,
         NULL, 0 ) == MONGO_OK );
 
-    ASSERT( mongo_count( conn, "test", "wc", bson_empty( &empty ) ) == 5 );
+    ASSERT( mongo_count( conn, "test", "wc", bson_shared_empty( ) ) == 5 );
 
     bson_init( query );
     bson_append_int( query, "n", 2 );
     bson_finish( query );
 
-    ASSERT( mongo_find_one( conn, "test.wc", query, bson_empty( &empty ), NULL ) == MONGO_OK );
+    ASSERT( mongo_find_one( conn, "test.wc", query, bson_shared_empty( ), NULL ) == MONGO_OK );
 
     bson_init( update );
         bson_append_start_object( update, "$set" );
@@ -158,16 +155,16 @@ void test_update_and_remove( mongo *conn ) {
     bson_finish( update );
 
     /* Update will appear to succeed with no write concern specified, but doesn't. */
-    ASSERT( mongo_find_one( conn, "test.wc", query, bson_empty( &empty ), NULL ) == MONGO_OK );
+    ASSERT( mongo_find_one( conn, "test.wc", query, bson_shared_empty( ), NULL ) == MONGO_OK );
     ASSERT( mongo_update( conn, "test.wc", query, update, 0, NULL ) == MONGO_OK );
-    ASSERT( mongo_find_one( conn, "test.wc", query, bson_empty( &empty ), NULL ) == MONGO_OK );
+    ASSERT( mongo_find_one( conn, "test.wc", query, bson_shared_empty( ), NULL ) == MONGO_OK );
 
     /* Remove will appear to succeed with no write concern specified, but doesn't. */
     ASSERT( mongo_remove( conn, "test.wc", query, NULL ) == MONGO_OK );
-    ASSERT( mongo_find_one( conn, "test.wc", query, bson_empty( &empty ), NULL ) == MONGO_OK );
+    ASSERT( mongo_find_one( conn, "test.wc", query, bson_shared_empty( ), NULL ) == MONGO_OK );
 
-    mongo_write_concern_init( wc );
-    wc->w = 1;
+    mongo_write_concern_init( wc );    
+    mongo_write_concern_set_w( wc, 1 );
     mongo_write_concern_finish( wc );
 
     mongo_clear_errors( conn );
@@ -185,7 +182,7 @@ void test_update_and_remove( mongo *conn ) {
     bson_destroy( update );
     for( i=0; i<5; i++ ) {
         bson_destroy( objs[i] );
-        bson_free( objs[i] );
+        bson_dealloc( objs[i] );
     }
 }
 
@@ -199,8 +196,8 @@ void test_write_concern_input( mongo *conn ) {
     bson_append_new_oid( b, "_id" );
     bson_finish( b );
 
-    mongo_write_concern_init( wc );
-    wc->w = 1;
+    mongo_write_concern_init( wc );    
+    mongo_write_concern_set_w( wc, 1 );
 
     /* Failure to finish write concern object. */
     ASSERT( mongo_insert( conn, TEST_NS, b, wc ) != MONGO_OK );
@@ -212,8 +209,8 @@ void test_write_concern_input( mongo *conn ) {
 
     /* Use a bad write concern. */
     mongo_clear_errors( conn );
-    mongo_write_concern_init( wcbad );
-    wcbad->w = 2;
+    mongo_write_concern_init( wcbad );    
+    mongo_write_concern_set_w( wcbad, 2 );
     mongo_write_concern_finish( wcbad );
     mongo_set_write_concern( conn, wcbad );
     ASSERT( mongo_insert( conn, TEST_NS, b, NULL ) != MONGO_OK );
@@ -236,16 +233,16 @@ void test_write_concern_input( mongo *conn ) {
 
 void test_insert( mongo *conn ) {
     mongo_write_concern wc0[1], wc1[1];
-    bson b[1], b2[1], b3[1], b4[1], empty[1];
+    bson b[1], b2[1], b3[1], b4[1];
     bson *objs[2];
 
     mongo_cmd_drop_collection( conn, TEST_DB, TEST_COL, NULL );
 
-    mongo_write_concern_init( wc0 );
-    wc0->w = 0;
+    mongo_write_concern_init( wc0 );    
+    mongo_write_concern_set_w( wc0, 0 );
     mongo_write_concern_finish( wc0 );
-    mongo_write_concern_init( wc1 );
-    wc1->w = 1;
+    mongo_write_concern_init( wc1 );    
+    mongo_write_concern_set_w( wc1, 1 );
     mongo_write_concern_finish( wc1 );
 
     bson_init( b4 );
@@ -254,7 +251,7 @@ void test_insert( mongo *conn ) {
 
     ASSERT( mongo_insert( conn, TEST_NS, b4, wc1 ) == MONGO_OK );
 
-    ASSERT( mongo_remove( conn, TEST_NS, bson_empty( empty ), wc1 ) == MONGO_OK );
+    ASSERT( mongo_remove( conn, TEST_NS, bson_shared_empty( ), wc1 ) == MONGO_OK );
 
     bson_init( b );
     bson_append_new_oid( b, "_id" );
@@ -297,9 +294,9 @@ void test_insert( mongo *conn ) {
 
     /* Insert two new documents by insert_batch. */
     conn->write_concern = NULL;
-    ASSERT( mongo_count( conn, TEST_DB, TEST_COL, bson_empty( empty ) ) == 1 );
+    ASSERT( mongo_count( conn, TEST_DB, TEST_COL, bson_shared_empty( ) ) == 1 );
     ASSERT( mongo_insert_batch( conn, TEST_NS, (const bson **)objs, 2, NULL, 0 ) == MONGO_OK );
-    ASSERT( mongo_count( conn, TEST_DB, TEST_COL, bson_empty( empty ) ) == 3 );
+    ASSERT( mongo_count( conn, TEST_DB, TEST_COL, bson_shared_empty( ) ) == 3 );
 
     /* This should definitely fail if we try again with write concern. */
     mongo_clear_errors( conn );
@@ -320,6 +317,37 @@ void test_insert( mongo *conn ) {
     mongo_write_concern_destroy( wc1 );
 }
 
+void test_write_concern_api( void ){
+  /* ATTENTION: Don't pay attention to the values themselves set with "setter" functions
+     values set to every field happen to be different in order to check for sutuations
+     where the getter (or setter) functions are wrongly coded and crossover set or get 
+     other attributes */
+  const char* wc_mode = "TEST";
+  mongo_write_concern wc;
+  memset( &wc, 0, sizeof( wc ));
+  
+  mongo_write_concern_set_w( &wc, 1 );
+  ASSERT( mongo_write_concern_get_w( &wc ) == 1 );
+
+  mongo_write_concern_set_wtimeout( &wc, 1000 );
+  ASSERT( mongo_write_concern_get_wtimeout( &wc ) == 1000 );
+
+  mongo_write_concern_set_j( &wc, 2 );
+  ASSERT( mongo_write_concern_get_j( &wc ) == 2 );
+
+  mongo_write_concern_set_fsync( &wc, 3 );
+  ASSERT( mongo_write_concern_get_fsync( &wc ) == 3 );
+
+  mongo_write_concern_set_mode( &wc, wc_mode );
+  ASSERT( mongo_write_concern_get_mode( &wc ) == wc_mode );
+
+  ASSERT( mongo_write_concern_get_cmd( &wc ) == NULL );
+  mongo_write_concern_finish( &wc );
+  ASSERT( mongo_write_concern_get_cmd( &wc ) != NULL );
+  
+  mongo_write_concern_destroy( &wc );
+}
+
 int main() {
     mongo conn[1];
     char version[10];
@@ -328,10 +356,7 @@ int main() {
 
     test_write_concern_finish( );
 
-    if( mongo_client( conn, TEST_SERVER, 27017 ) != MONGO_OK ) {
-        printf( "failed to connect\n" );
-        exit( 1 );
-    }
+    CONN_CLIENT_TEST;
 
     ASSERT( conn->write_concern != (void*)0 );
 
@@ -343,5 +368,6 @@ int main() {
     }
 
     mongo_destroy( conn );
+    test_write_concern_api();
     return 0;
 }

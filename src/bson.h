@@ -96,7 +96,8 @@ MONGO_EXTERN_C_START
 enum bson_error_t {
     BSON_SIZE_OVERFLOW =     (1 << 0),  /**< Trying to create a BSON object larger than INT_MAX. */
     BSON_ALREADY_FINISHED =  (1 << 4),  /**< Trying to modify a finished BSON object. */
-    BSON_NOT_IN_SUBOBJECT =  (1 << 5)   /**< Trying bson_append_finish_object() and not in sub */
+    BSON_NOT_IN_SUBOBJECT =  (1 << 5),  /**< Trying bson_append_finish_object() and not in sub */
+    BSON_DOES_NOT_OWN_DATA = (1 << 6)   /**< Trying to expand a BSON object which does not own its data block. */
 };
 
 enum bson_validity_t {
@@ -144,16 +145,22 @@ typedef struct {
     bson_bool_t first;
 } bson_iterator;
 
+#define INIT_ITERATOR {NULL, 0}
+
 typedef struct {
     char *data;    /**< Pointer to a block of data in this BSON object. */
     char *cur;     /**< Pointer to the current position. */
     int dataSize;  /**< The number of bytes allocated to char *data. */
     bson_bool_t finished; /**< When finished, the BSON object can no longer be modified. */
-    size_t stack[32];     /**< A stack used to keep track of nested BSON elements. */
+    bson_bool_t ownsData; /**< Whether destroying this object will deallocate its data block */
+    size_t stack[32];     /**< A stack used to keep track of nested BSON elements.*/
     int stackPos;         /**< Index of current stack position. */
     int err; /**< Bitfield representing errors or warnings on this buffer */
-    char *errstr; /**< A string representation of the most recent error or warning. */
+    size_t * stackPtr;    /**< Pointer to the current stack */
+    int stackSize;        /**< Number of elements in the current stack */
 } bson;
+
+#define INIT_BSON {NULL, NULL}
 
 #pragma pack(1)
 typedef union {
@@ -173,8 +180,52 @@ typedef struct {
    READING
    ------------------------------ */
 
-MONGO_EXPORT bson* bson_create( void );
-MONGO_EXPORT void  bson_dispose(bson* b);
+/**
+ * Allocate memory for a new BSON object.
+ *
+ * @note After using this function, you must initialize the object
+ * using bson_init_finished_data( ), bson_init_empty( ), bson_init( ),
+ * or one of the other init functions.
+ *
+ * @return a new BSON object.
+ */
+MONGO_EXPORT bson* bson_alloc( void );
+
+/**
+ * Deallocate a BSON object.
+ *
+ * @note You must call bson_destroy( ) before calling this function.
+ */
+MONGO_EXPORT void bson_dealloc( bson* b );
+
+/**
+ * Initialize a BSON object for reading and set its data
+ * pointer to the provided char*.
+ *
+ * @note When done using the bson object, you must pass
+ *      the object to bson_destroy( ).
+ *
+ * @param b the BSON object to initialize.
+ * @param data the finalized raw BSON data.
+ * @param ownsData when true, bson_destroy() will free the data block.
+ *
+ * @return BSON_OK or BSON_ERROR.
+ */
+int bson_init_finished_data( bson *b, char *data, bson_bool_t ownsData );
+
+/**
+ * Initialize a BSON object for reading and copy finalized
+ * BSON data from the provided char*.
+ *
+ * @note When done using the bson object, you must pass
+ *      the object to bson_destroy( ).
+ *
+ * @param b the BSON object to initialize.
+ * @param data the finalized raw BSON data to copy.
+ *
+ * @return BSON_OK or BSON_ERROR.
+ */
+int bson_init_finished_data_with_copy( bson *b, const char *data );
 
 /**
  * Size of a BSON object.
@@ -184,6 +235,14 @@ MONGO_EXPORT void  bson_dispose(bson* b);
  * @return the size.
  */
 MONGO_EXPORT int bson_size( const bson *b );
+
+/**
+ * Minimum finished size of an unfinished BSON object.
+ *
+ * @param b the BSON object.
+ *
+ * @return the BSON object's minimum finished size
+ */
 MONGO_EXPORT size_t bson_buffer_size( const bson *b );
 
 /**
@@ -220,8 +279,8 @@ MONGO_EXPORT void bson_print_raw( const char *bson , int depth );
 MONGO_EXPORT bson_type bson_find( bson_iterator *it, const bson *obj, const char *name );
 
 
-MONGO_EXPORT bson_iterator* bson_iterator_create( void );
-MONGO_EXPORT void bson_iterator_dispose(bson_iterator*);
+MONGO_EXPORT bson_iterator* bson_iterator_alloc( void );
+MONGO_EXPORT void bson_iterator_dealloc(bson_iterator*);
 /**
  * Initialize a bson_iterator.
  *
@@ -425,13 +484,21 @@ int bson_iterator_string_len( const bson_iterator *i );
 MONGO_EXPORT const char *bson_iterator_code( const bson_iterator *i );
 
 /**
- * Calls bson_empty on scope if not a bson_codewscope
+ * Get the code scope value of the BSON object currently pointed to
+ * by the iterator. Calls bson_init_empty on scope if current object is
+ * not BSON_CODEWSCOPE.
+ *
+ * @note When copyData is false, the scope becomes invalid when the
+ *       iterator's data buffer is deallocated. For either value of
+ *       copyData, you must pass the scope object to bson_destroy
+ *       when you are done using it.
  *
  * @param i the bson_iterator.
- * @param scope the bson scope.
+ * @param scope an uninitialized BSON object to receive the scope.
+ * @param copyData when true, makes a copy of the scope data which will remain
+ *   valid when the iterator's data buffer is deallocated.
  */
-/* calls bson_empty on scope if not a bson_codewscope */
-MONGO_EXPORT void bson_iterator_code_scope( const bson_iterator *i, bson *scope );
+MONGO_EXPORT void bson_iterator_code_scope_init( const bson_iterator *i, bson *scope, bson_bool_t copyData );
 
 /**
  * Get the date value of the BSON object currently pointed to by the
@@ -509,10 +576,14 @@ MONGO_EXPORT const char *bson_iterator_regex_opts( const bson_iterator *i );
  * Get the BSON subobject currently pointed to by the
  * iterator.
  *
+ * @note When copyData is 0, the subobject becomes invalid when its parent's
+ *       data buffer is deallocated. For either value of copyData, you must
+ *       pass the subobject to bson_destroy when you are done using it.
+ *
  * @param i the bson_iterator.
- * @param sub the BSON subobject destination.
+ * @param sub an unitialized BSON object which will become the new subobject.
  */
-MONGO_EXPORT void bson_iterator_subobject( const bson_iterator *i, bson *sub );
+MONGO_EXPORT void bson_iterator_subobject_init( const bson_iterator *i, bson *sub, bson_bool_t copyData );
 
 /**
  * Get a bson_iterator that on the BSON subobject.
@@ -575,37 +646,51 @@ MONGO_EXPORT time_t bson_oid_generated_time( bson_oid_t *oid ); /* Gives the tim
    ------------------------------ */
 
 /**
- *  Initialize a new bson object. If not created
- *  with bson_new, you must initialize each new bson
- *  object using this function.
+ * Initialize a BSON object for building and allocate a data buffer.
  *
- *  @note When finished, you must pass the bson object to
- *      bson_destroy( ).
- */
-MONGO_EXPORT void bson_init( bson *b );
-
-/**
- * Initialize a BSON object, and point its data
- * pointer to the provided char*.
+ * @note You must initialize each new bson object using this,
+ *  bson_init_finished_data( ), or one of the other init functions.
+ *  When done using the BSON object, you must pass it to bson_destroy( ).
  *
  * @param b the BSON object to initialize.
- * @param data the raw BSON data.
  *
  * @return BSON_OK or BSON_ERROR.
  */
-int bson_init_data( bson *b , char *data );
-int bson_init_finished_data( bson *b, char *data ) ;
+MONGO_EXPORT int bson_init( bson *b );
 
 /**
- * Initialize a BSON object, and set its
- * buffer to the given size.
+ * Initialize a BSON object for building and allocate a data buffer
+ * of a given size.
+ *
+ * @note When done using the bson object, you must pass it
+ *  to bson_destroy( ).
  *
  * @param b the BSON object to initialize.
  * @param size the initial size of the buffer.
  *
  * @return BSON_OK or BSON_ERROR.
  */
-void bson_init_size( bson *b, int size );
+int bson_init_size( bson *b, int size );
+
+/**
+ * Initialize a BSON object for building, using the provided char*
+ * of the given size. When ownsData is true, the BSON object may
+ * reallocate the data block as needed, and bson_destroy will free
+ * it.
+ *
+ * See also bson_init_finished_data( )
+ *
+ * @note When done using the BSON object, you must pass
+ *      it to bson_destroy( ). 
+ *
+ * @param b the BSON object to initialize.
+ * @param data the raw BSON data.
+ * @param ownsData when true, bson_ensure_space() may reallocate the block and
+ *   bson_destroy() will free it
+ *
+ * @return BSON_OK or BSON_ERROR.
+ */
+int bson_init_unfinished_data( bson *b, char *data, int dataSize, bson_bool_t ownsData );
 
 /**
  * Grow a bson object.
@@ -629,7 +714,7 @@ int bson_ensure_space( bson *b, const size_t bytesNeeded );
 MONGO_EXPORT int bson_finish( bson *b );
 
 /**
- * Destroy a bson object.
+ * Destroy a bson object and deallocate its data buffer.
  *
  * @param b the bson object to destroy.
  *
@@ -637,14 +722,27 @@ MONGO_EXPORT int bson_finish( bson *b );
 MONGO_EXPORT void bson_destroy( bson *b );
 
 /**
- * Returns a pointer to a static empty BSON object.
+ * Initialize a BSON object to an emoty object with a shared, static data
+ * buffer.
+ *
+ * @note You must NOT modify this object's data. It is safe though not
+ * required to call bson_destroy( ) on this object.
  *
  * @param obj the BSON object to initialize.
  *
- * @return the empty initialized BSON object.
+ * @return BSON_OK
  */
-/* returns pointer to static empty bson object */
-MONGO_EXPORT bson *bson_empty( bson *obj );
+MONGO_EXPORT bson_bool_t bson_init_empty( bson *obj );
+
+/**
+ * Return a pointer to an empty, shared, static BSON object.
+ *
+ * @note This object is owned by the driver. You must NOT modify it
+ * and must NOT call bson_destroy( ) on it.
+ *
+ * @return the shared initialized BSON object.
+ */
+MONGO_EXPORT const bson *bson_shared_empty( void );
 
 /**
  * Make a complete copy of the a BSON object.
