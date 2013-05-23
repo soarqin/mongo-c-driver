@@ -556,6 +556,7 @@ MONGO_EXPORT int gridfile_writer_init(gridfile *gfile, gridfs *gfs, const char *
     /* File doesn't exist, let's create a new bson id and initialize length to zero */
     bson_oid_gen(&(gfile->id));
     gfile->length = 0;
+    gfile->chunkSize = DEFAULT_CHUNK_SIZE;
     /* File doesn't exist, lets use the flags passed as a parameter to this procedure call */
     gfile->flags = flags;
   }  
@@ -628,8 +629,13 @@ MONGO_EXPORT int gridfile_get_chunksize( const gridfile *gfile ) {
     return gfile->chunkSize;
   } else {
     if( bson_find(&it, gfile->meta, "chunkSize") != BSON_EOO ) {
-      return bson_iterator_int(&it);
-  } else {  
+      int size = bson_iterator_int(&it);
+      if(size) {
+        return size;
+      } else {
+        return DEFAULT_CHUNK_SIZE;
+      }
+    } else {  
       return DEFAULT_CHUNK_SIZE;
     }
   }
