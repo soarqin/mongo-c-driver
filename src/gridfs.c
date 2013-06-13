@@ -550,7 +550,6 @@ MONGO_EXPORT int gridfile_writer_init(gridfile *gfile, gridfs *gfs, const char *
     /* File doesn't exist, let's create a new bson id and initialize length to zero */
     bson_oid_gen(&(gfile->id));
     gfile->length = 0;
-    gfile->chunkSize = DEFAULT_CHUNK_SIZE;
     /* File doesn't exist, lets use the flags passed as a parameter to this procedure call */
     gfile->flags = flags;
   }  
